@@ -15,7 +15,10 @@ cd ComfyUI/custom_nodes
 git clone https://github.com/jay0n9/ComfyUI-SpheRoPE.git
 ```
 
-No additional Python packages are required for the native nodes beyond ComfyUI's existing PyTorch stack.
+No additional Python packages are required for the native nodes beyond
+ComfyUI's existing `torch`, `numpy`, and `Pillow` stack. The included
+`requirements.txt` is intentionally package-free so ComfyUI Manager does not
+replace the environment's CUDA-enabled PyTorch build.
 
 ## Standard KSampler workflow
 

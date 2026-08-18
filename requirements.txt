@@ -1,0 +1,7 @@
+# Runtime dependencies are supplied by ComfyUI itself:
+# - torch
+# - numpy
+# - Pillow
+#
+# Keep this file intentionally package-free so installing the custom node does
+# not replace ComfyUI's CUDA-enabled PyTorch build or upgrade core packages.
