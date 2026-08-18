@@ -71,6 +71,84 @@ class _SFCEmbedND(nn.Module):
         out[:, :, -count:] = sfc[None, None].expand(ids.shape[0], -1, -1, -1, -1, -1)
         return out
 
+class _SFCWanEmbedND(nn.Module):
+    """Replace Wan's width-axis RoPE with periodic/spherical SFC phases."""
+
+    def __init__(self, original, strength=0.25):
+        super().__init__()
+        self.original = original
+        self.strength = max(0.0, min(float(strength), 1.0))
+        self.axes_dim = list(original.axes_dim)
+        self.theta = original.theta
+        self.cache = {}
+        if len(self.axes_dim) != 3 or any(dim % 2 for dim in self.axes_dim):
+            raise ValueError(f"Unsupported Wan RoPE axes: {self.axes_dim}")
+
+    def _width_matrices(self, rows, columns, device, dtype):
+        key = (rows, columns, device.type, device.index, dtype, self.strength)
+        cached = self.cache.get(key)
+        if cached is not None:
+            return cached
+
+        width_dim = self.axes_dim[2]
+        scale = torch.linspace(
+            0,
+            (width_dim - 2) / width_dim,
+            steps=width_dim // 2,
+            dtype=torch.float64,
+            device=device,
+        )
+        frequencies = 1.0 / (float(self.theta) ** scale)
+        cycles = columns * frequencies / (2.0 * math.pi)
+        harmonics = torch.round(cycles).clamp_min(1.0)
+        periodic_frequencies = harmonics * (2.0 * math.pi / columns)
+
+        row = torch.arange(rows, dtype=torch.float64, device=device)
+        column = torch.arange(columns, dtype=torch.float64, device=device)
+        row_grid, column_grid = torch.meshgrid(row, column, indexing="ij")
+        latitude = row_grid / (rows - 1) * math.pi - math.pi / 2.0
+        longitude = column_grid / columns * 2.0 * math.pi - math.pi
+        radius = columns / (2.0 * math.pi)
+        spherical_x = (torch.cos(latitude) * torch.cos(longitude) * radius).reshape(-1)
+        spherical_y = (torch.cos(latitude) * torch.sin(longitude) * radius).reshape(-1)
+
+        periodic = column_grid.reshape(-1, 1) * periodic_frequencies.unsqueeze(0)
+        spherical = torch.empty(
+            rows * columns,
+            width_dim // 2,
+            dtype=torch.float64,
+            device=device,
+        )
+        spherical[:, 0::2] = spherical_x.unsqueeze(1) * frequencies[0::2]
+        spherical[:, 1::2] = spherical_y.unsqueeze(1) * frequencies[1::2]
+        sfc_angles = torch.where((cycles >= 1.0).unsqueeze(0), periodic, spherical)
+        stock_angles = column_grid.reshape(-1, 1) * frequencies.unsqueeze(0)
+        angles = torch.lerp(stock_angles, sfc_angles, self.strength)
+        matrices = torch.stack(
+            [torch.cos(angles), -torch.sin(angles), torch.sin(angles), torch.cos(angles)],
+            dim=-1,
+        ).reshape(rows, columns, width_dim // 2, 2, 2).to(dtype=dtype)
+        self.cache[key] = matrices
+        return matrices
+
+    def forward(self, ids):
+        stock = self.original(ids)
+        if ids.ndim != 3 or ids.shape[-1] != 3:
+            return stock
+        row_values = torch.unique(ids[..., 1], sorted=True)
+        column_values = torch.unique(ids[..., 2], sorted=True)
+        rows, columns = row_values.numel(), column_values.numel()
+        if rows < 2 or columns < 2:
+            return stock
+
+        row_index = torch.searchsorted(row_values, ids[..., 1].contiguous()).long()
+        column_index = torch.searchsorted(column_values, ids[..., 2].contiguous()).long()
+        matrices = self._width_matrices(rows, columns, stock.device, stock.dtype)
+        width = matrices[row_index, column_index]
+        out = stock.clone()
+        out[:, 0, :, -self.axes_dim[2] // 2:] = width
+        return out
+
 def _spherope_erp_post_cfg(args):
     positive = args.get("cond")
     if not positive:
@@ -124,18 +202,43 @@ def _spherope_erp_post_cfg(args):
 class SpheRoPESFCModelPatch:
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"model": ("MODEL",)}}
+        return {
+            "required": {"model": ("MODEL",)},
+            "optional": {
+                "sfc_strength": (
+                    "FLOAT",
+                    {"default": 0.25, "min": 0.0, "max": 1.0, "step": 0.05},
+                )
+            },
+        }
     RETURN_TYPES = ("MODEL",)
     RETURN_NAMES = ("sfc_model",)
     FUNCTION = "patch"
     CATEGORY = "SpheRoPE/native"
 
-    def patch(self, model):
+    def patch(self, model, sfc_strength=0.25):
         out = model.clone()
-        original = out.get_model_object("diffusion_model.pe_embedder")
-        if not hasattr(original, "axes_dim") or list(original.axes_dim) != [16, 56, 56]:
-            raise ValueError("SpheRoPE SFC Model Patch currently supports FLUX.1 only.")
-        out.add_object_patch("diffusion_model.pe_embedder", _SFCEmbedND(original))
+        diffusion_model = out.get_model_object("diffusion_model")
+        module_name = diffusion_model.__class__.__module__
+        is_wan = module_name.startswith("comfy.ldm.wan")
+        object_path = (
+            "diffusion_model.rope_embedder"
+            if is_wan
+            else "diffusion_model.pe_embedder"
+        )
+        original = out.get_model_object(object_path)
+        if not hasattr(original, "axes_dim"):
+            raise ValueError("SpheRoPE requires a model with a 3-axis RoPE embedder.")
+        if is_wan:
+            patched = _SFCWanEmbedND(original, strength=sfc_strength)
+        elif list(original.axes_dim) == [16, 56, 56]:
+            patched = _SFCEmbedND(original)
+        else:
+            raise ValueError(
+                "SpheRoPE SFC Model Patch supports native Wan and FLUX.1 models; "
+                f"received {module_name} with axes {list(original.axes_dim)}."
+            )
+        out.add_object_patch(object_path, patched)
         out.set_model_sampler_post_cfg_function(_spherope_erp_post_cfg)
         return (out,)
 
@@ -320,15 +423,20 @@ class SpheRoPEPipelinePatch:
             "model": ("MODEL",),
             "vae": ("VAE",),
             "pad_latent_columns": ("INT", {"default": 18, "min": 1, "max": 64}),
+        }, "optional": {
+            "sfc_strength": (
+                "FLOAT",
+                {"default": 0.25, "min": 0.0, "max": 1.0, "step": 0.05},
+            ),
         }}
     RETURN_TYPES = ("MODEL", "VAE")
     RETURN_NAMES = ("spherope_model", "circular_vae")
     FUNCTION = "patch"
     CATEGORY = "SpheRoPE/native"
-    DESCRIPTION = "Apply the FLUX.1 SFC/ERP sampler hooks and wrap the VAE for seam-safe standard decoding."
+    DESCRIPTION = "Apply native Wan/FLUX SFC and ERP sampler hooks and wrap the VAE for seam-safe standard decoding."
 
-    def patch(self, model, vae, pad_latent_columns):
-        spherope_model = SpheRoPESFCModelPatch().patch(model)[0]
+    def patch(self, model, vae, pad_latent_columns, sfc_strength=0.25):
+        spherope_model = SpheRoPESFCModelPatch().patch(model, sfc_strength=sfc_strength)[0]
         circular_vae = _CircularVAEProxy(vae, pad_latent_columns)
         return spherope_model, circular_vae
 

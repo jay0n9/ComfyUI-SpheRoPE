@@ -1,8 +1,8 @@
 # ComfyUI-SpheRoPE
 
-Native ComfyUI nodes for seamless 360-degree equirectangular panorama generation with FLUX.1, adapted from [SpheRoPE](https://github.com/orhir/SpheRoPE).
+Native ComfyUI nodes for seamless 360-degree equirectangular panorama generation with native FLUX.1 and Wan video models, adapted from [SpheRoPE](https://github.com/orhir/SpheRoPE).
 
-The native path is designed to fit an existing ComfyUI graph: it patches a regular FLUX.1 `MODEL`, packages ERP conditioning into ordinary positive/negative `CONDITIONING`, works with the standard `KSampler`, and returns a wrapped `VAE` that can be connected to the standard `VAE Decode` node.
+The native path is designed to fit an existing ComfyUI graph: it patches a regular FLUX.1 or Wan `MODEL`, packages ERP conditioning into ordinary positive/negative `CONDITIONING`, works with the standard `KSampler`, and returns a wrapped `VAE` that can be connected to the standard `VAE Decode` node.
 
 > Non-commercial use only. This repository follows the upstream [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) license. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
@@ -19,7 +19,7 @@ No additional Python packages are required for the native nodes beyond ComfyUI's
 
 ## Standard KSampler workflow
 
-1. Load a FLUX.1 model, CLIP, and VAE as usual.
+1. Load a FLUX.1 or native Wan model, CLIP, and VAE as usual.
 2. Connect `MODEL` and `VAE` to **SpheRoPE Pipeline Patch**.
 3. Connect the patched `spherope_model` to a standard **KSampler**.
 4. Use **SpheRoPE ERP Conditioning** instead of separate positive/negative CLIP text encode nodes.
@@ -39,14 +39,14 @@ An importable example is included at [`examples/spherope_native_flux1_modular.js
 
 | Node | Purpose |
 | --- | --- |
-| SpheRoPE Pipeline Patch | Combines the FLUX.1 spherical-frequency-coordinate model patch and circular VAE wrapper. |
+| SpheRoPE Pipeline Patch | Combines the native Wan/FLUX.1 spherical-frequency-coordinate model patch and circular VAE wrapper. |
 | SpheRoPE ERP Conditioning | Encodes positive/negative prompts and embeds the fixed ERP branch plus `erp_gamma` metadata. |
 | SpheRoPE SFC Model Patch | Model-only patch for advanced/custom graphs. |
 | SpheRoPE Circular VAE Patch | VAE-only seam-safe wrapper for standard VAE Decode. |
 | SpheRoPE ERP CFG Guider | Optional three-way guider for custom sampler workflows. |
 | SpheRoPE Circular VAE Decode | Compatibility decoder; the wrapped VAE with standard VAE Decode is preferred. |
 
-The native SFC model patch currently validates for FLUX.1 (`axes_dim == [16, 56, 56]`).
+The native SFC model patch supports FLUX.1 (`axes_dim == [16, 56, 56]`) and native ComfyUI Wan models with three-axis RoPE. For Wan VACE, connect `ModelSampling -> SpheRoPE Pipeline Patch -> Mobius Model Patch -> KSampler`.
 
 ## Optional isolated upstream runner
 
@@ -70,3 +70,7 @@ This project is an independent ComfyUI integration/port based on the ideas and i
 Changes in this repository include native ComfyUI model hooks, standard-KSampler ERP conditioning, a combined model/VAE patch node, a circular VAE proxy, and ComfyUI workflow integration. This repository is not affiliated with or endorsed by the upstream authors.
 
 The code is distributed under **Creative Commons Attribution-NonCommercial 4.0 International** to preserve the upstream terms. Model weights and other third-party components may have separate licenses; you are responsible for complying with them.
+
+### Wan CausVid quality-safe starting values
+
+Use `sfc_strength = 0.25` and `erp_gamma = 0.05` with CausVid CFG 1.0. Gamma values around 0.5 or above can dominate four-step Wan denoising and collapse the image into horizontal bands. Increase gamma only in small increments after an A/B test.
