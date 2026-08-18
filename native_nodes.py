@@ -469,22 +469,11 @@ class SpheRoPECircularVAEDecode:
         return (images,)
 
 NODE_CLASS_MAPPINGS = {
-    "SpheRoPESFCModelPatch": SpheRoPESFCModelPatch,
-    "SpheRoPEEncodeERP": SpheRoPEEncodeERP,
     "SpheRoPEERPConditioning": SpheRoPEERPConditioning,
-    "SpheRoPEERPGuider": SpheRoPEERPGuider,
-    "SpheRoPESemanticCFGGuider": SpheRoPESemanticCFGGuider,
-    "SpheRoPECircularVAEPatch": SpheRoPECircularVAEPatch,
     "SpheRoPEPipelinePatch": SpheRoPEPipelinePatch,
-    "SpheRoPECircularVAEDecode": SpheRoPECircularVAEDecode,
 }
+
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "SpheRoPESFCModelPatch": "SpheRoPE SFC Model Patch",
-    "SpheRoPEEncodeERP": "SpheRoPE Encode ERP Prompts",
     "SpheRoPEERPConditioning": "SpheRoPE ERP Conditioning",
-    "SpheRoPEERPGuider": "SpheRoPE ERP CFG Guider",
-    "SpheRoPESemanticCFGGuider": "SpheRoPE Semantic CFG Guider",
-    "SpheRoPECircularVAEPatch": "SpheRoPE Circular VAE Patch",
     "SpheRoPEPipelinePatch": "SpheRoPE Pipeline Patch",
-    "SpheRoPECircularVAEDecode": "SpheRoPE Circular VAE Decode",
 }

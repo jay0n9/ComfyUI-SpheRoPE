@@ -1,3 +1,5 @@
+"""Legacy isolated upstream runner; intentionally not registered by the package."""
+
 import os
 import subprocess
 import sys
