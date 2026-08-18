@@ -38,30 +38,16 @@ The ERP geometry prompt is intentionally internal and fixed:
 
 An importable example is included at [`examples/spherope_native_flux1_modular.json`](examples/spherope_native_flux1_modular.json).
 
-## Main nodes
+## Public nodes
 
 | Node | Purpose |
 | --- | --- |
 | SpheRoPE Pipeline Patch | Combines the native Wan/FLUX.1 spherical-frequency-coordinate model patch and circular VAE wrapper. |
 | SpheRoPE ERP Conditioning | Encodes positive/negative prompts and embeds the fixed ERP branch plus `erp_gamma` metadata. |
-| SpheRoPE SFC Model Patch | Model-only patch for advanced/custom graphs. |
-| SpheRoPE Circular VAE Patch | VAE-only seam-safe wrapper for standard VAE Decode. |
-| SpheRoPE ERP CFG Guider | Optional three-way guider for custom sampler workflows. |
-| SpheRoPE Circular VAE Decode | Compatibility decoder; the wrapped VAE with standard VAE Decode is preferred. |
+
+Only these two integrated nodes are registered in ComfyUI. Legacy and internal helper implementations remain unregistered to keep the node menu and workflow surface minimal.
 
 The native SFC model patch supports FLUX.1 (`axes_dim == [16, 56, 56]`) and native ComfyUI Wan models with three-axis RoPE. For Wan VACE, connect `ModelSampling -> SpheRoPE Pipeline Patch -> Mobius Model Patch -> KSampler`.
-
-## Optional isolated upstream runner
-
-**SpheRoPE Generate Panorama** launches an external upstream checkout in a separate Python environment. It is not needed for the native KSampler workflow. Configure it before starting ComfyUI:
-
-```bash
-export SPHEROPE_PYTHON=/path/to/spherope-env/bin/python
-export SPHEROPE_SCRIPT=/path/to/SpheRoPE/generate_panorama.py
-export SPHEROPE_GPU_IDS=0,1
-```
-
-On Windows, set the same environment variables with Windows paths. The GPU selector sets one `CUDA_VISIBLE_DEVICES` value per run; it does not combine VRAM across GPUs. NVLink alone does not make ComfyUI or PyTorch treat two GPUs as one memory pool.
 
 ## Attribution and license
 

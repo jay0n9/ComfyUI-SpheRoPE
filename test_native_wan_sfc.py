@@ -52,6 +52,13 @@ class NativeWanSFCTests(unittest.TestCase):
         self.assertTrue(torch.allclose(south, south[:1].expand_as(south), atol=1e-6))
         self.assertTrue(torch.allclose(north, north[:1].expand_as(north), atol=1e-6))
 
+    def test_only_integrated_nodes_are_public(self):
+        from native_nodes import NODE_CLASS_MAPPINGS
+
+        self.assertEqual(
+            set(NODE_CLASS_MAPPINGS),
+            {"SpheRoPEERPConditioning", "SpheRoPEPipelinePatch"},
+        )
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
